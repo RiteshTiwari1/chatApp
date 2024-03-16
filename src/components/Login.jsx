@@ -90,13 +90,14 @@
 
 
 
+
 import React, { useRef, useState } from 'react';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { auth, db } from '../utils/firebase'; // Assuming db is your Firestore database instance
 import { useDispatch } from 'react-redux';
 import { addUser } from '../utils/userSlice';
 import { checkValidate } from '../utils/validate';
-import { collection, addDoc } from "firebase/firestore"; 
+import { collection, addDoc, query, where,getDocs, updateDoc, doc } from "firebase/firestore"; 
 
 import Header from './Header';
 import { current } from '@reduxjs/toolkit';
@@ -112,7 +113,25 @@ const Login = () => {
     const toggleSignInForm = () => {
         setIsSignInForm(!isSignInForm);
     };
+    
+    const getUserByEmail = async (email) => {
 
+        // console.log(email);
+        const usersRef = collection(db, 'users');
+        // console.log(usersRef);
+        const q = query(usersRef, where('email', '==', email));
+        const querySnapshot = await getDocs(q);
+        // console.log(querySnapshot);
+        if (!querySnapshot.empty) {
+            const userData = querySnapshot.docs[0].data();
+            const docRef = querySnapshot.docs[0].id;
+            
+            return { ...userData, docRef }; // Include document reference in the returned user data
+        } else {
+            throw new Error('User not found');
+        }
+    };
+    
     const handleButtonClick = () => {
         const message = checkValidate(emailRef.current.value, passwordRef.current.value);
         setErrorMessage(message);
@@ -149,6 +168,7 @@ const Login = () => {
                                 displayName: name,
                                 docRef: docRef.id // Store the document reference in the loggedInUser object
                             }
+                            console.log(loggedInUser);
                             dispatch(addUser(loggedInUser));
                             localStorage.setItem('user', JSON.stringify(loggedInUser));
                             
@@ -167,38 +187,33 @@ const Login = () => {
                     setErrorMessage(errorCode + " " + errorMessage);
                 });
         } else {
-
             signInWithEmailAndPassword(auth, email, password)
             .then((userCredential) => {
                 const user = userCredential.user;
                 console.log("User signed in successfully");
-                
+                console.log(user);
                 // Fetch user details from Firestore based on email
-                const userDetail = getUserByEmail()
-                
-                getDocs(query)
-                    .then((querySnapshot) => {
-                        querySnapshot.forEach((doc) => {
-                            const userData = doc.data();
-                            const loggedInUser = {
-                                uid: user.uid,
-                                email: user.email,
-                                displayName: userData.displayName,
-                                docRef: doc.id
-                            };
-        
-                            // Update user's online status in Firestore
-                            updateDoc(doc(db, "users", doc.id), { isOnline: true })
-                                .then(() => {
-                                    console.log("User's online status updated successfully");
-                                    dispatch(addUser(loggedInUser));
-                                    localStorage.setItem('user', JSON.stringify(loggedInUser));
-                                })
-                                .catch((error) => {
-                                    console.error("Error updating user's online status:", error);
-                                    setErrorMessage(error.message);
-                                });
-                        });
+                getUserByEmail(email)
+                    .then((userData) => {
+                        console.log(userData);
+                        const loggedInUser = {
+                            uid: user.uid,
+                            email: user.email,
+                            displayName: userData.displayName,
+                            docRef: userData.docRef
+                        };
+                        console.log(loggedInUser);
+                        // Update user's online status in Firestore
+                        updateDoc(doc(db, "users", userData.docRef), { isOnline: true })
+                            .then(() => {
+                                console.log("User's online status updated successfully");
+                                dispatch(addUser(loggedInUser));
+                                localStorage.setItem('user', JSON.stringify(loggedInUser));
+                            })
+                            .catch((error) => {
+                                console.error("Error updating user's online status:", error);
+                                setErrorMessage(error.message);
+                            });
                     })
                     .catch((error) => {
                         console.error("Error fetching user details from Firestore:", error);
@@ -209,12 +224,8 @@ const Login = () => {
                 console.error("Error signing in:", error);
                 setErrorMessage(error.message);
             });
-        
-            };
-            
-        
+        }
     };
-    
     
     return (
         <>
